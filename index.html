@@ -1383,6 +1383,7 @@
     card.dataset.mood = data.mood;
     card.dataset.pinned = data.pinned ? 'true' : 'false';
     if (data.pinned) card.classList.add('pinned');
+    if (data.fromPrincesaBeca) card.classList.add('rebeca-post');
 
     var moodEmoji = MOOD_EMOJI[data.mood] || '✨';
     var charEmoji = CHAR_EMOJI[data.character] || '💌';
@@ -1397,6 +1398,7 @@
           '</div>' +
           '<div class="card-emoji-big">' + charEmoji + '</div>' +
         '</div>' +
+      (data.fromPrincesaBeca ? '<div class="rebeca-tag">💖 mensagem da Princesa Beca</div>' : '') +
         '<div class="card-title"></div>' +
         '<div class="card-msg"></div>' +
       '</div>' +
@@ -1446,6 +1448,7 @@
       title: document.getElementById('fTitle').value.trim(),
       message: document.getElementById('fMessage').value.trim(),
       pinned: document.getElementById('fPinned').checked,
+      fromPrincesaBeca: document.getElementById('fFromRebeca').checked,
       dateISO: new Date().toISOString(),
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
