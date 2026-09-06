@@ -1,5 +1,6 @@
 
 
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap');
 
@@ -1063,7 +1064,6 @@
 <!-- SDK do Firebase (banco de dados compartilhado — Firestore) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 
 <!-- SDK do EmailJS (envio de e-mail direto do navegador) -->
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
@@ -1111,11 +1111,9 @@
   };
 
   var db = null;
-  var storage = null;
   if (firebaseConfig.apiKey.indexOf('COLE_') !== 0 && typeof firebase !== 'undefined') {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
-    if (typeof firebase.storage === 'function') storage = firebase.storage();
   }
 
   function emailjsConfigurado() {
@@ -1458,9 +1456,15 @@
   }
 
   function getMessageImages(data) {
-    if (Array.isArray(data.images)) return data.images.filter(function (image) { return image && image.url; });
-    if (data.imageUrl) return [{ id: 'legacy', url: data.imageUrl, name: 'Imagem da mensagem' }];
-    return [];
+    var images = [];
+    if (Array.isArray(data.images)) {
+      images = images.concat(data.images.filter(function (image) { return image && image.url; }).map(function (image) {
+        return Object.assign({ source: 'storage' }, image);
+      }));
+    }
+    if (data.imageData && data.imageData.url) images.push(Object.assign({ source: 'inline' }, data.imageData));
+    if (!images.length && data.imageUrl) images.push({ id: 'legacy', url: data.imageUrl, name: 'Imagem da mensagem' });
+    return images;
   }
 
   function appendImageToGallery(gallery, image) {
@@ -1477,6 +1481,7 @@
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     link.dataset.imageId = imageId;
+    link.dataset.imageSource = image.source || '';
     link.setAttribute('aria-label', 'Abrir imagem em tamanho completo');
 
     var img = document.createElement('img');
@@ -1514,17 +1519,68 @@
 
   function appendUploadedImage(messageId, image) {
     eachCardWithId(messageId, function (card) {
-      appendImageToGallery(card.querySelector('.card-images'), image);
+      var gallery = card.querySelector('.card-images');
+      if (image.source === 'inline') {
+        gallery.querySelectorAll('.card-image-link[data-image-source="inline"]').forEach(function (oldImage) { oldImage.remove(); });
+      }
+      appendImageToGallery(gallery, image);
     });
   }
 
-  function safeStorageName(fileName) {
-    var dot = fileName.lastIndexOf('.');
-    var extension = dot >= 0 ? fileName.slice(dot).toLowerCase() : '';
-    var base = dot >= 0 ? fileName.slice(0, dot) : fileName;
-    base = base.normalize ? base.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : base;
-    base = base.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70) || 'imagem';
-    return base + extension.replace(/[^.a-z0-9]/g, '');
+  function compressImageForFirestore(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onerror = function () { reject(new Error('Não foi possível ler o arquivo.')); };
+      reader.onload = function () {
+        // GIFs pequenos são mantidos como enviados, inclusive com animação.
+        if (file.type === 'image/gif' && file.size <= 480 * 1024) {
+          resolve({ url: reader.result, type: file.type, size: file.size });
+          return;
+        }
+
+        var img = new Image();
+        img.onerror = function () { reject(new Error('O arquivo não é uma imagem válida.')); };
+        img.onload = function () {
+          var maxSide = 1600;
+          var scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+          var width = Math.max(1, Math.round(img.naturalWidth * scale));
+          var height = Math.max(1, Math.round(img.naturalHeight * scale));
+          var canvas = document.createElement('canvas');
+          var context = canvas.getContext('2d');
+          var dataUrl = '';
+          var quality = 0.84;
+          var maxEncodedLength = 650000;
+
+          for (var attempt = 0; attempt < 8; attempt++) {
+            canvas.width = width;
+            canvas.height = height;
+            context = canvas.getContext('2d');
+            context.clearRect(0, 0, width, height);
+            context.drawImage(img, 0, 0, width, height);
+            dataUrl = canvas.toDataURL('image/webp', quality);
+            if (dataUrl.length <= maxEncodedLength) break;
+            if (quality > 0.58) {
+              quality -= 0.09;
+            } else {
+              width = Math.max(1, Math.round(width * 0.78));
+              height = Math.max(1, Math.round(height * 0.78));
+            }
+          }
+
+          if (!dataUrl || dataUrl.length > maxEncodedLength) {
+            reject(new Error('A imagem ficou grande demais mesmo após a otimização.'));
+            return;
+          }
+          resolve({
+            url: dataUrl,
+            type: dataUrl.slice(5, dataUrl.indexOf(';')) || 'image/webp',
+            size: Math.round(dataUrl.length * 0.75)
+          });
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   function uploadMessageImage(messageId, file) {
@@ -1539,49 +1595,36 @@
       setImageUploadState(messageId, { statusText: '⚠ a imagem deve ter no máximo 10 MB.' });
       return;
     }
-    if (!db || !storage) {
-      setImageUploadState(messageId, { statusText: '⚠ o armazenamento de imagens ainda não está disponível.' });
+    if (!db) {
+      setImageUploadState(messageId, { statusText: '⚠ o banco do mural ainda não está disponível.' });
       return;
     }
 
     var imageId = Date.now() + '-' + Math.random().toString(36).slice(2, 9);
-    var imagePath = 'mural-imagens/' + messageId + '/' + imageId + '-' + safeStorageName(file.name);
-    var storageRef = storage.ref().child(imagePath);
-    var uploadTask = storageRef.put(file, { contentType: file.type });
+    setImageUploadState(messageId, { busy: true, buttonText: 'preparando imagem...', statusText: 'otimizando para enviar mais rápido' });
 
-    setImageUploadState(messageId, { busy: true, buttonText: 'enviando 0%...', statusText: 'não feche a página durante o envio' });
-
-    uploadTask.on('state_changed', function (snapshot) {
-      var progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-      setImageUploadState(messageId, { busy: true, buttonText: 'enviando ' + progress + '%...', statusText: 'não feche a página durante o envio' });
-    }, function (err) {
-      console.error('Erro ao enviar imagem:', err);
-      setImageUploadState(messageId, { statusText: err && err.code === 'storage/unauthorized'
-        ? '⚠ sem permissão no Firebase Storage. Verifique as regras.'
-        : '⚠ não foi possível enviar a imagem. Tente novamente.' });
-    }, function () {
-      uploadTask.snapshot.ref.getDownloadURL().then(function (url) {
-        var image = {
-          id: imageId,
-          url: url,
-          path: imagePath,
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          uploadedAtISO: new Date().toISOString()
-        };
-        return db.collection('mensagens').doc(messageId).update({
-          images: firebase.firestore.FieldValue.arrayUnion(image)
-        }).then(function () { return image; });
-      }).then(function (image) {
-        appendUploadedImage(messageId, image);
-        setImageUploadState(messageId, { statusText: '✔ imagem adicionada!' });
-        setTimeout(function () { setImageUploadState(messageId, {}); }, 2200);
-      }).catch(function (err) {
-        console.error('Erro ao vincular imagem à mensagem:', err);
-        storageRef.delete().catch(function () {});
-        setImageUploadState(messageId, { statusText: '⚠ a imagem foi enviada, mas não pôde ser salva na mensagem.' });
-      });
+    compressImageForFirestore(file).then(function (optimized) {
+      var image = {
+        id: imageId,
+        url: optimized.url,
+        name: file.name,
+        type: optimized.type,
+        size: optimized.size,
+        source: 'inline',
+        uploadedAtISO: new Date().toISOString()
+      };
+      setImageUploadState(messageId, { busy: true, buttonText: 'salvando imagem...', statusText: 'só mais um instante' });
+      return db.collection('mensagens').doc(messageId).update({ imageData: image }).then(function () { return image; });
+    }).then(function (image) {
+      appendUploadedImage(messageId, image);
+      setImageUploadState(messageId, { statusText: '✔ imagem adicionada!' });
+      setTimeout(function () { setImageUploadState(messageId, {}); }, 2200);
+    }).catch(function (err) {
+      console.error('Erro ao salvar imagem:', err);
+      var message = err && err.code === 'permission-denied'
+        ? '⚠ sem permissão para atualizar esta mensagem no banco.'
+        : '⚠ não foi possível salvar a imagem. Tente outra imagem.';
+      setImageUploadState(messageId, { statusText: message });
     });
   }
 
