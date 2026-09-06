@@ -760,6 +760,63 @@
     min-height: 14px;
   }
 
+  /* ── IMAGENS DAS MENSAGENS ── */
+  .card-images {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .card-images:empty { display: none; }
+  .card-image-link {
+    display: block;
+    min-width: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #f0d6e4;
+    background: #fdf4f8;
+    cursor: zoom-in;
+  }
+  .card-image-link:only-child { grid-column: 1 / -1; }
+  .card-image {
+    display: block;
+    width: 100%;
+    max-height: 320px;
+    object-fit: cover;
+  }
+  .card-image-actions {
+    margin-top: 10px;
+  }
+  .card-image-add {
+    width: 100%;
+    min-height: 36px;
+    padding: 8px 12px;
+    border: 1px dashed #e7a8c5;
+    border-radius: 10px;
+    background: #fff8fb;
+    color: #a52f62;
+    font-family: 'Nunito', sans-serif;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  }
+  .card-image-add:hover { background: #ffeaf4; border-color: #f472b6; transform: translateY(-1px); }
+  .card-image-add:focus-visible { outline: 3px solid rgba(244,114,182,0.3); outline-offset: 2px; }
+  .card-image-add:disabled { opacity: 0.65; cursor: wait; transform: none; }
+  .card-image-input { display: none; }
+  .card-image-status {
+    min-height: 15px;
+    margin-top: 5px;
+    color: #9b2447;
+    font-family: 'Nunito', sans-serif;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-align: center;
+  }
+  .card-expanded-clone .card-images { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card-expanded-clone .card-image { max-height: 520px; object-fit: contain; background: #fff8fb; }
+
   body.mural-locked { overflow: hidden; }
 
   /* ── RESPONSIVO ── */
@@ -1006,6 +1063,7 @@
 <!-- SDK do Firebase (banco de dados compartilhado — Firestore) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 
 <!-- SDK do EmailJS (envio de e-mail direto do navegador) -->
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
@@ -1053,9 +1111,11 @@
   };
 
   var db = null;
+  var storage = null;
   if (firebaseConfig.apiKey.indexOf('COLE_') !== 0 && typeof firebase !== 'undefined') {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
+    if (typeof firebase.storage === 'function') storage = firebase.storage();
   }
 
   function emailjsConfigurado() {
@@ -1250,6 +1310,7 @@
     clone.style.overflowY = 'hidden';
 
     clone.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('button, input, a, form, textarea')) return;
       e.stopPropagation();
       closeExpanded();
     });
@@ -1396,6 +1457,154 @@
     return diffDays + ' dias atrás';
   }
 
+  function getMessageImages(data) {
+    if (Array.isArray(data.images)) return data.images.filter(function (image) { return image && image.url; });
+    if (data.imageUrl) return [{ id: 'legacy', url: data.imageUrl, name: 'Imagem da mensagem' }];
+    return [];
+  }
+
+  function appendImageToGallery(gallery, image) {
+    if (!gallery || !image || !image.url) return;
+    var imageId = String(image.id || image.url);
+    var duplicate = Array.prototype.some.call(gallery.querySelectorAll('.card-image-link'), function (link) {
+      return link.dataset.imageId === imageId;
+    });
+    if (duplicate) return;
+
+    var link = document.createElement('a');
+    link.className = 'card-image-link';
+    link.href = image.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.dataset.imageId = imageId;
+    link.setAttribute('aria-label', 'Abrir imagem em tamanho completo');
+
+    var img = document.createElement('img');
+    img.className = 'card-image';
+    img.src = image.url;
+    img.alt = image.name ? 'Imagem anexada: ' + image.name : 'Imagem anexada à mensagem';
+    img.loading = 'lazy';
+    link.appendChild(img);
+    link.addEventListener('click', function (event) { event.stopPropagation(); });
+    gallery.appendChild(link);
+  }
+
+  function renderMessageImages(card, data) {
+    var gallery = card.querySelector('.card-images');
+    getMessageImages(data).forEach(function (image) { appendImageToGallery(gallery, image); });
+  }
+
+  function eachCardWithId(messageId, callback) {
+    document.querySelectorAll('.card[data-id]').forEach(function (card) {
+      if (card.dataset.id === messageId) callback(card);
+    });
+  }
+
+  function setImageUploadState(messageId, options) {
+    eachCardWithId(messageId, function (card) {
+      var button = card.querySelector('.card-image-add');
+      var status = card.querySelector('.card-image-status');
+      if (button) {
+        button.disabled = !!options.busy;
+        button.textContent = options.buttonText || '📷 adicionar imagem';
+      }
+      if (status) status.textContent = options.statusText || '';
+    });
+  }
+
+  function appendUploadedImage(messageId, image) {
+    eachCardWithId(messageId, function (card) {
+      appendImageToGallery(card.querySelector('.card-images'), image);
+    });
+  }
+
+  function safeStorageName(fileName) {
+    var dot = fileName.lastIndexOf('.');
+    var extension = dot >= 0 ? fileName.slice(dot).toLowerCase() : '';
+    var base = dot >= 0 ? fileName.slice(0, dot) : fileName;
+    base = base.normalize ? base.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : base;
+    base = base.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70) || 'imagem';
+    return base + extension.replace(/[^.a-z0-9]/g, '');
+  }
+
+  function uploadMessageImage(messageId, file) {
+    var allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    var maxSize = 10 * 1024 * 1024;
+
+    if (!file || allowedTypes.indexOf(file.type) === -1) {
+      setImageUploadState(messageId, { statusText: '⚠ escolha uma imagem JPG, PNG, WEBP ou GIF.' });
+      return;
+    }
+    if (file.size > maxSize) {
+      setImageUploadState(messageId, { statusText: '⚠ a imagem deve ter no máximo 10 MB.' });
+      return;
+    }
+    if (!db || !storage) {
+      setImageUploadState(messageId, { statusText: '⚠ o armazenamento de imagens ainda não está disponível.' });
+      return;
+    }
+
+    var imageId = Date.now() + '-' + Math.random().toString(36).slice(2, 9);
+    var imagePath = 'mural-imagens/' + messageId + '/' + imageId + '-' + safeStorageName(file.name);
+    var storageRef = storage.ref().child(imagePath);
+    var uploadTask = storageRef.put(file, { contentType: file.type });
+
+    setImageUploadState(messageId, { busy: true, buttonText: 'enviando 0%...', statusText: 'não feche a página durante o envio' });
+
+    uploadTask.on('state_changed', function (snapshot) {
+      var progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+      setImageUploadState(messageId, { busy: true, buttonText: 'enviando ' + progress + '%...', statusText: 'não feche a página durante o envio' });
+    }, function (err) {
+      console.error('Erro ao enviar imagem:', err);
+      setImageUploadState(messageId, { statusText: err && err.code === 'storage/unauthorized'
+        ? '⚠ sem permissão no Firebase Storage. Verifique as regras.'
+        : '⚠ não foi possível enviar a imagem. Tente novamente.' });
+    }, function () {
+      uploadTask.snapshot.ref.getDownloadURL().then(function (url) {
+        var image = {
+          id: imageId,
+          url: url,
+          path: imagePath,
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          uploadedAtISO: new Date().toISOString()
+        };
+        return db.collection('mensagens').doc(messageId).update({
+          images: firebase.firestore.FieldValue.arrayUnion(image)
+        }).then(function () { return image; });
+      }).then(function (image) {
+        appendUploadedImage(messageId, image);
+        setImageUploadState(messageId, { statusText: '✔ imagem adicionada!' });
+        setTimeout(function () { setImageUploadState(messageId, {}); }, 2200);
+      }).catch(function (err) {
+        console.error('Erro ao vincular imagem à mensagem:', err);
+        storageRef.delete().catch(function () {});
+        setImageUploadState(messageId, { statusText: '⚠ a imagem foi enviada, mas não pôde ser salva na mensagem.' });
+      });
+    });
+  }
+
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest && event.target.closest('.card-image-add');
+    if (!button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    var card = button.closest('.card');
+    var input = card && card.querySelector('.card-image-input');
+    if (input) input.click();
+  });
+
+  document.addEventListener('change', function (event) {
+    if (!event.target.classList || !event.target.classList.contains('card-image-input')) return;
+    event.stopPropagation();
+    var input = event.target;
+    var card = input.closest('.card');
+    var file = input.files && input.files[0];
+    input.value = '';
+    if (card && card.dataset.id && file) uploadMessageImage(card.dataset.id, file);
+  });
+
   // Cria o elemento DOM de um card a partir dos dados salvos
   function renderCard(id, data) {
     var date = data.createdAt && data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.dateISO || Date.now());
@@ -1425,6 +1634,12 @@
         (data.fromPrincesaBeca ? '<div class="rebeca-tag">💖 mensagem da Princesa Beca</div>' : '') +
         '<div class="card-title"></div>' +
         '<div class="card-msg"></div>' +
+        '<div class="card-images" aria-label="Imagens da mensagem"></div>' +
+        '<div class="card-image-actions">' +
+          '<button type="button" class="card-image-add">📷 adicionar imagem</button>' +
+          '<input class="card-image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-label="Selecionar imagem para esta mensagem">' +
+          '<p class="card-image-status" aria-live="polite"></p>' +
+        '</div>' +
       '</div>' +
       '<div class="card-footer">' +
         '<div class="mood-tag ' + data.mood + '">' + moodEmoji + ' ' + data.mood + '</div>' +
@@ -1434,6 +1649,7 @@
     // texto via textContent evita qualquer HTML indevido digitado no formulário
     card.querySelector('.card-title').textContent = data.title;
     card.querySelector('.card-msg').textContent = data.message;
+    renderMessageImages(card, data);
 
     wireCardClick(card);
     return card;
@@ -1473,6 +1689,7 @@
       message: document.getElementById('fMessage').value.trim(),
       pinned: document.getElementById('fPinned').checked,
       fromPrincesaBeca: document.getElementById('fFromRebeca').checked,
+      images: [],
       dateISO: new Date().toISOString(),
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
