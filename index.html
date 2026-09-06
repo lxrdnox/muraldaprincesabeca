@@ -1630,6 +1630,7 @@
   var heroSpotifyInput = document.getElementById('heroSpotifyInput');
   var heroMusicSave = document.getElementById('heroMusicSave');
   var heroMusicStatus = document.getElementById('heroMusicStatus');
+  var MUSIC_CONFIG_DOC_ID = '__musica_do_dia__';
 
   heroMusicForm.addEventListener('submit', function (event) {
     event.preventDefault();
@@ -1647,9 +1648,17 @@
     heroMusicSave.disabled = true;
     heroMusicSave.textContent = 'salvando...';
     heroMusicStatus.textContent = '';
-    db.collection('configuracoes').doc('musica-do-dia').set({
+    db.collection('mensagens').doc(MUSIC_CONFIG_DOC_ID).set({
       spotifyUrl: spotifyUrl,
+      systemConfig: 'music',
+      character: 'hk',
+      mood: 'feliz',
+      title: 'Música do dia',
+      message: 'Configuração interna da música do mural',
+      pinned: false,
+      fromPrincesaBeca: false,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       dateISO: new Date().toISOString()
     }, { merge: true }).then(function () {
       renderHeroSpotifyPlayer(spotifyUrl);
@@ -1667,7 +1676,7 @@
   });
 
   if (db) {
-    db.collection('configuracoes').doc('musica-do-dia').onSnapshot(function (doc) {
+    db.collection('mensagens').doc(MUSIC_CONFIG_DOC_ID).onSnapshot(function (doc) {
       var data = doc.exists ? doc.data() : {};
       renderHeroSpotifyPlayer(data.spotifyUrl || '');
     }, function (err) {
@@ -2069,9 +2078,12 @@
     var pinnedCount = 0;
     var monthCounts = {}; // { 'agosto 2026': N, ... }
     var monthKey = {};    // { 'agosto 2026': 'agosto' } para data-value
+    var total = 0;
 
     snapshot.forEach(function (doc) {
       var data = doc.data();
+      if (doc.id === MUSIC_CONFIG_DOC_ID || data.systemConfig) return;
+      total++;
       var date = data.createdAt && data.createdAt.toDate
         ? data.createdAt.toDate()
         : new Date(data.dateISO || Date.now());
@@ -2087,7 +2099,6 @@
       monthKey[label] = mes;
     });
 
-    var total = snapshot.size;
     var dias = calcDias();
 
     // Hero stats
@@ -2158,7 +2169,9 @@
     db.collection('mensagens').orderBy('createdAt', 'desc').onSnapshot(function (snapshot) {
       document.querySelectorAll('.cards-grid .card[data-id]').forEach(function (el) { el.remove(); });
       snapshot.forEach(function (doc) {
-        cardsGrid.appendChild(renderCard(doc.id, doc.data()));
+        var data = doc.data();
+        if (doc.id === MUSIC_CONFIG_DOC_ID || data.systemConfig) return;
+        cardsGrid.appendChild(renderCard(doc.id, data));
       });
       atualizarEstatísticas(snapshot);
       applyFilters();
