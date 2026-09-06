@@ -154,8 +154,73 @@
   .hero-right {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    align-items: flex-end;
+    width: min(420px, 42vw);
+    min-width: 320px;
+    align-self: stretch;
+    align-items: stretch;
+  }
+  .hero-music {
+    width: 100%;
+    min-height: 100%;
+    padding: 16px;
+    border: 1px solid #efc9dc;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.9);
+    box-shadow: 0 10px 28px rgba(192,54,106,0.09);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+  }
+  .hero-music-title {
+    color: #9b2447;
+    font-family: 'Nunito', sans-serif;
+    font-size: 14px;
+    font-weight: 900;
+    line-height: 1.35;
+  }
+  .hero-music-empty {
+    padding: 14px 10px;
+    border: 1px dashed #ecc1d5;
+    border-radius: 10px;
+    color: #b07090;
+    font-size: 11px;
+    line-height: 1.5;
+    text-align: center;
+  }
+  .hero-music-empty[hidden], .hero-music-player[hidden] { display: none; }
+  .hero-music-form { display: flex; gap: 7px; }
+  .hero-music-input {
+    flex: 1;
+    min-width: 0;
+    padding: 9px 10px;
+    border: 1px solid #f0cfe0;
+    border-radius: 9px;
+    background: #fff;
+    color: #4a2a3a;
+    font: 11px 'Inter', sans-serif;
+  }
+  .hero-music-input:focus { outline: none; border-color: #ff8fbd; box-shadow: 0 0 0 3px rgba(244,114,182,0.15); }
+  .hero-music-save {
+    flex-shrink: 0;
+    padding: 9px 13px;
+    border: none;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #ff6fa8, #a855f7);
+    color: #fff;
+    font-family: 'Nunito', sans-serif;
+    font-size: 11px;
+    font-weight: 900;
+    cursor: pointer;
+  }
+  .hero-music-save:disabled { opacity: 0.65; cursor: wait; }
+  .hero-music-status {
+    min-height: 14px;
+    color: #9b2447;
+    font-family: 'Nunito', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
   }
   .hero-chars {
     display: flex;
@@ -408,6 +473,14 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     white-space: pre-wrap;
+  }
+
+  .spotify-player {
+    display: block;
+    width: 100%;
+    border: 0;
+    border-radius: 12px;
+    background: #121212;
   }
 
   .card-footer {
@@ -736,6 +809,14 @@
     outline: none;
     border-color: #ff8fbd;
   }
+  .add-form-hint {
+    color: #c08aa5;
+    font-family: 'Inter', sans-serif;
+    font-size: 9.5px;
+    font-weight: 500;
+    line-height: 1.4;
+    text-transform: none;
+  }
   .add-form-check {
     flex-direction: row !important;
     align-items: center;
@@ -858,7 +939,7 @@
 
   @media (max-width: 768px) {
     .hero { flex-direction: column; gap: 16px; padding: 22px 18px 18px; }
-    .hero-right { width: 100%; }
+    .hero-right { width: 100%; min-width: 0; }
     .hero-right > div { flex-direction: row; flex-wrap: wrap; }
     .hero h1 { font-size: 22px; }
     .hero-stats { flex-wrap: wrap; gap: 14px; }
@@ -953,6 +1034,16 @@
     </div>
   </div>
   <div class="hero-right">
+    <section class="hero-music" aria-labelledby="heroMusicTitle">
+      <div class="hero-music-title" id="heroMusicTitle">🎵 Música que te dedico para esse dia:</div>
+      <div class="hero-music-empty" id="heroMusicEmpty">Cole um link do Spotify abaixo para escolher a música do dia 💖</div>
+      <div class="hero-music-player" id="heroMusicPlayer" hidden></div>
+      <form class="hero-music-form" id="heroMusicForm">
+        <input class="hero-music-input" id="heroSpotifyInput" type="text" inputmode="url" autocomplete="off" placeholder="cole o link do Spotify" aria-label="Link do Spotify">
+        <button class="hero-music-save" id="heroMusicSave" type="submit">salvar</button>
+      </form>
+      <p class="hero-music-status" id="heroMusicStatus" aria-live="polite"></p>
+    </section>
   </div>
 </div>
 
@@ -1472,6 +1563,117 @@
     if (diffDays <= 0) return 'hoje';
     if (diffDays === 1) return 'ontem';
     return diffDays + ' dias atrás';
+  }
+
+  function spotifyEmbedData(rawUrl) {
+    var value = String(rawUrl || '').trim();
+    if (!value) return null;
+
+    var uriMatch = value.match(/^spotify:(track|album|playlist|episode|show|artist):([A-Za-z0-9]+)$/i);
+    var type = uriMatch && uriMatch[1];
+    var id = uriMatch && uriMatch[2];
+
+    if (!uriMatch) {
+      try {
+        var parsed = new URL(value);
+        if (parsed.hostname !== 'open.spotify.com') return null;
+        var parts = parsed.pathname.split('/').filter(Boolean);
+        if (parts[0] === 'intl-pt' || parts[0] === 'intl-br') parts.shift();
+        if (parts[0] === 'embed') parts.shift();
+        type = parts[0];
+        id = parts[1];
+      } catch (err) {
+        return null;
+      }
+    }
+
+    var supported = ['track', 'album', 'playlist', 'episode', 'show', 'artist'];
+    if (supported.indexOf(String(type).toLowerCase()) === -1 || !/^[A-Za-z0-9]+$/.test(id || '')) return null;
+    type = String(type).toLowerCase();
+    return {
+      url: 'https://open.spotify.com/embed/' + type + '/' + id + '?utm_source=generator&theme=0',
+      height: (type === 'track' || type === 'episode') ? 152 : 352
+    };
+  }
+
+  function renderHeroSpotifyPlayer(spotifyUrl) {
+    var embed = spotifyEmbedData(spotifyUrl);
+    var player = document.getElementById('heroMusicPlayer');
+    var empty = document.getElementById('heroMusicEmpty');
+    var input = document.getElementById('heroSpotifyInput');
+    var saveButton = document.getElementById('heroMusicSave');
+    player.innerHTML = '';
+
+    if (!embed) {
+      player.hidden = true;
+      empty.hidden = false;
+      saveButton.textContent = 'salvar';
+      return;
+    }
+
+    var iframe = document.createElement('iframe');
+    iframe.className = 'spotify-player';
+    iframe.src = embed.url;
+    iframe.height = String(embed.height);
+    iframe.title = 'Player do Spotify — música dedicada para este dia';
+    iframe.loading = 'lazy';
+    iframe.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture';
+    iframe.setAttribute('allowfullscreen', '');
+    player.appendChild(iframe);
+    player.hidden = false;
+    empty.hidden = true;
+    saveButton.textContent = 'trocar';
+    if (document.activeElement !== input) input.value = spotifyUrl;
+  }
+
+  var heroMusicForm = document.getElementById('heroMusicForm');
+  var heroSpotifyInput = document.getElementById('heroSpotifyInput');
+  var heroMusicSave = document.getElementById('heroMusicSave');
+  var heroMusicStatus = document.getElementById('heroMusicStatus');
+
+  heroMusicForm.addEventListener('submit', function (event) {
+    event.preventDefault();
+    var spotifyUrl = heroSpotifyInput.value.trim();
+    if (!spotifyEmbedData(spotifyUrl)) {
+      heroMusicStatus.textContent = '⚠ cole um link válido do Spotify.';
+      heroSpotifyInput.focus();
+      return;
+    }
+    if (!db) {
+      heroMusicStatus.textContent = '⚠ o banco do mural ainda não está disponível.';
+      return;
+    }
+
+    heroMusicSave.disabled = true;
+    heroMusicSave.textContent = 'salvando...';
+    heroMusicStatus.textContent = '';
+    db.collection('configuracoes').doc('musica-do-dia').set({
+      spotifyUrl: spotifyUrl,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      dateISO: new Date().toISOString()
+    }, { merge: true }).then(function () {
+      renderHeroSpotifyPlayer(spotifyUrl);
+      heroMusicSave.disabled = false;
+      heroMusicStatus.textContent = '✔ música do dia atualizada!';
+      setTimeout(function () { heroMusicStatus.textContent = ''; }, 2200);
+    }).catch(function (err) {
+      console.error('Erro ao salvar música do dia:', err);
+      heroMusicSave.disabled = false;
+      heroMusicSave.textContent = 'salvar';
+      heroMusicStatus.textContent = err && err.code === 'permission-denied'
+        ? '⚠ sem permissão para salvar a música.'
+        : '⚠ não foi possível salvar. Tente novamente.';
+    });
+  });
+
+  if (db) {
+    db.collection('configuracoes').doc('musica-do-dia').onSnapshot(function (doc) {
+      var data = doc.exists ? doc.data() : {};
+      renderHeroSpotifyPlayer(data.spotifyUrl || '');
+    }, function (err) {
+      console.error('Erro ao carregar música do dia:', err);
+      heroMusicStatus.textContent = '⚠ não foi possível carregar a música agora.';
+    });
   }
 
   function getMessageImages(data) {
