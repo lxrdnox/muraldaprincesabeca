@@ -661,11 +661,28 @@
     gap: 10px;
   }
   .reply-panel-title { font-family: 'Nunito', sans-serif; font-weight: 900; color: #9b2447; font-size: 15px; }
-  .reply-list { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; overflow-x: hidden; max-height: 310px; padding: 1px 2px 4px; }
+  .reply-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    max-height: 310px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 1px 7px 4px 2px;
+    scrollbar-width: thin;
+    scrollbar-color: #e9a8c8 transparent;
+  }
+  .reply-list::-webkit-scrollbar { width: 6px; }
+  .reply-list::-webkit-scrollbar-track { background: transparent; }
+  .reply-list::-webkit-scrollbar-thumb { background: #e9a8c8; border-radius: 20px; }
   .reply-item {
+    flex: 0 0 auto;
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    height: auto;
+    min-height: max-content;
     position: relative;
     overflow: hidden;
     background: #fff;
@@ -676,7 +693,18 @@
   }
   .reply-item::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(to right, #ff4d80, #c084fc); }
   .reply-author { display: block; color: #c0366a; font-family: 'Nunito', sans-serif; font-size: 12px; font-weight: 900; margin-bottom: 5px; }
-  .reply-text { color: #7a4060; font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+  .reply-text {
+    display: block;
+    height: auto;
+    max-height: none;
+    color: #7a4060;
+    font-size: 12px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
   .reply-empty { color: #b07090; font-size: 12px; line-height: 1.5; padding: 5px 0; }
   .reply-empty-gif { width: 34px; height: 34px; margin-left: 5px; vertical-align: middle; image-rendering: pixelated; }
   .reply-form { position: relative; display: flex; flex-direction: column; gap: 7px; margin-top: 0; }
@@ -1036,11 +1064,11 @@
   </div>
   <div class="hero-right">
     <section class="hero-music" aria-labelledby="heroMusicTitle">
-      <div class="hero-music-title" id="heroMusicTitle">Música que te dedico para esse dia:</div>
-      <div class="hero-music-empty" id="heroMusicEmpty">Eu te amo, Rebeca</div>
+      <div class="hero-music-title" id="heroMusicTitle">🎵 Música que te dedico para esse dia:</div>
+      <div class="hero-music-empty" id="heroMusicEmpty">Cole um link do YouTube Music abaixo para escolher a música do dia 💖</div>
       <div class="hero-music-player" id="heroMusicPlayer" hidden></div>
       <form class="hero-music-form" id="heroMusicForm">
-        <input class="hero-music-input" id="heroYoutubeInput" type="text" inputmode="url" autocomplete="off" placeholder="musga aqui" aria-label="Link do YouTube Music">
+        <input class="hero-music-input" id="heroYoutubeInput" type="text" inputmode="url" autocomplete="off" placeholder="cole o link do YouTube Music" aria-label="Link do YouTube Music">
         <button class="hero-music-save" id="heroMusicSave" type="submit">salvar</button>
       </form>
       <p class="hero-music-status" id="heroMusicStatus" aria-live="polite"></p>
