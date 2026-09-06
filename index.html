@@ -475,9 +475,10 @@
     white-space: pre-wrap;
   }
 
-  .spotify-player {
+  .music-player {
     display: block;
     width: 100%;
+    height: 236px;
     border: 0;
     border-radius: 12px;
     background: #121212;
@@ -1035,11 +1036,11 @@
   </div>
   <div class="hero-right">
     <section class="hero-music" aria-labelledby="heroMusicTitle">
-      <div class="hero-music-title" id="heroMusicTitle">🎵 Música que te dedico para esse dia:</div>
-      <div class="hero-music-empty" id="heroMusicEmpty">Cole um link do Spotify abaixo para escolher a música do dia 💖</div>
+      <div class="hero-music-title" id="heroMusicTitle">Música que te dedico para esse dia:</div>
+      <div class="hero-music-empty" id="heroMusicEmpty">Eu te amo, Rebeca</div>
       <div class="hero-music-player" id="heroMusicPlayer" hidden></div>
       <form class="hero-music-form" id="heroMusicForm">
-        <input class="hero-music-input" id="heroSpotifyInput" type="text" inputmode="url" autocomplete="off" placeholder="cole o link do Spotify" aria-label="Link do Spotify">
+        <input class="hero-music-input" id="heroYoutubeInput" type="text" inputmode="url" autocomplete="off" placeholder="musga aqui" aria-label="Link do YouTube Music">
         <button class="hero-music-save" id="heroMusicSave" type="submit">salvar</button>
       </form>
       <p class="hero-music-status" id="heroMusicStatus" aria-live="polite"></p>
@@ -1565,42 +1566,42 @@
     return diffDays + ' dias atrás';
   }
 
-  function spotifyEmbedData(rawUrl) {
+  function youtubeEmbedData(rawUrl) {
     var value = String(rawUrl || '').trim();
     if (!value) return null;
+    try {
+      var parsed = new URL(value);
+      var hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
+      var parts = parsed.pathname.split('/').filter(Boolean);
+      var videoId = '';
+      var playlistId = parsed.searchParams.get('list') || '';
 
-    var uriMatch = value.match(/^spotify:(track|album|playlist|episode|show|artist):([A-Za-z0-9]+)$/i);
-    var type = uriMatch && uriMatch[1];
-    var id = uriMatch && uriMatch[2];
-
-    if (!uriMatch) {
-      try {
-        var parsed = new URL(value);
-        if (parsed.hostname !== 'open.spotify.com') return null;
-        var parts = parsed.pathname.split('/').filter(Boolean);
-        if (parts[0] === 'intl-pt' || parts[0] === 'intl-br') parts.shift();
-        if (parts[0] === 'embed') parts.shift();
-        type = parts[0];
-        id = parts[1];
-      } catch (err) {
+      if (hostname === 'youtu.be') {
+        videoId = parts[0] || '';
+      } else if (hostname === 'youtube.com' || hostname === 'm.youtube.com' || hostname === 'music.youtube.com') {
+        if (parts[0] === 'watch') videoId = parsed.searchParams.get('v') || '';
+        if (parts[0] === 'embed' || parts[0] === 'shorts') videoId = parts[1] || '';
+      } else {
         return null;
       }
-    }
 
-    var supported = ['track', 'album', 'playlist', 'episode', 'show', 'artist'];
-    if (supported.indexOf(String(type).toLowerCase()) === -1 || !/^[A-Za-z0-9]+$/.test(id || '')) return null;
-    type = String(type).toLowerCase();
-    return {
-      url: 'https://open.spotify.com/embed/' + type + '/' + id + '?utm_source=generator&theme=0',
-      height: (type === 'track' || type === 'episode') ? 152 : 352
-    };
+      if (/^[A-Za-z0-9_-]{6,20}$/.test(videoId)) {
+        return { url: 'https://www.youtube-nocookie.com/embed/' + videoId + '?rel=0' };
+      }
+      if (/^[A-Za-z0-9_-]{10,80}$/.test(playlistId)) {
+        return { url: 'https://www.youtube-nocookie.com/embed/videoseries?list=' + encodeURIComponent(playlistId) + '&rel=0' };
+      }
+      return null;
+    } catch (err) {
+      return null;
+    }
   }
 
-  function renderHeroSpotifyPlayer(spotifyUrl) {
-    var embed = spotifyEmbedData(spotifyUrl);
+  function renderHeroYoutubePlayer(youtubeUrl) {
+    var embed = youtubeEmbedData(youtubeUrl);
     var player = document.getElementById('heroMusicPlayer');
     var empty = document.getElementById('heroMusicEmpty');
-    var input = document.getElementById('heroSpotifyInput');
+    var input = document.getElementById('heroYoutubeInput');
     var saveButton = document.getElementById('heroMusicSave');
     player.innerHTML = '';
 
@@ -1612,10 +1613,9 @@
     }
 
     var iframe = document.createElement('iframe');
-    iframe.className = 'spotify-player';
+    iframe.className = 'music-player';
     iframe.src = embed.url;
-    iframe.height = String(embed.height);
-    iframe.title = 'Player do Spotify — música dedicada para este dia';
+    iframe.title = 'Player do YouTube Music — música dedicada para este dia';
     iframe.loading = 'lazy';
     iframe.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture';
     iframe.setAttribute('allowfullscreen', '');
@@ -1623,21 +1623,20 @@
     player.hidden = false;
     empty.hidden = true;
     saveButton.textContent = 'trocar';
-    if (document.activeElement !== input) input.value = spotifyUrl;
+    if (document.activeElement !== input) input.value = youtubeUrl;
   }
 
   var heroMusicForm = document.getElementById('heroMusicForm');
-  var heroSpotifyInput = document.getElementById('heroSpotifyInput');
+  var heroYoutubeInput = document.getElementById('heroYoutubeInput');
   var heroMusicSave = document.getElementById('heroMusicSave');
   var heroMusicStatus = document.getElementById('heroMusicStatus');
-  var MUSIC_CONFIG_DOC_ID = '__musica_do_dia__';
 
   heroMusicForm.addEventListener('submit', function (event) {
     event.preventDefault();
-    var spotifyUrl = heroSpotifyInput.value.trim();
-    if (!spotifyEmbedData(spotifyUrl)) {
-      heroMusicStatus.textContent = '⚠ cole um link válido do Spotify.';
-      heroSpotifyInput.focus();
+    var youtubeUrl = heroYoutubeInput.value.trim();
+    if (!youtubeEmbedData(youtubeUrl)) {
+      heroMusicStatus.textContent = '⚠ cole um link válido do YouTube Music.';
+      heroYoutubeInput.focus();
       return;
     }
     if (!db) {
@@ -1648,20 +1647,12 @@
     heroMusicSave.disabled = true;
     heroMusicSave.textContent = 'salvando...';
     heroMusicStatus.textContent = '';
-    db.collection('mensagens').doc(MUSIC_CONFIG_DOC_ID).set({
-      spotifyUrl: spotifyUrl,
-      systemConfig: 'music',
-      character: 'hk',
-      mood: 'feliz',
-      title: 'Música do dia',
-      message: 'Configuração interna da música do mural',
-      pinned: false,
-      fromPrincesaBeca: false,
+    db.collection('configuracoes').doc('musica-do-dia').set({
+      youtubeUrl: youtubeUrl,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       dateISO: new Date().toISOString()
-    }, { merge: true }).then(function () {
-      renderHeroSpotifyPlayer(spotifyUrl);
+    }).then(function () {
+      renderHeroYoutubePlayer(youtubeUrl);
       heroMusicSave.disabled = false;
       heroMusicStatus.textContent = '✔ música do dia atualizada!';
       setTimeout(function () { heroMusicStatus.textContent = ''; }, 2200);
@@ -1676,9 +1667,9 @@
   });
 
   if (db) {
-    db.collection('mensagens').doc(MUSIC_CONFIG_DOC_ID).onSnapshot(function (doc) {
+    db.collection('configuracoes').doc('musica-do-dia').onSnapshot(function (doc) {
       var data = doc.exists ? doc.data() : {};
-      renderHeroSpotifyPlayer(data.spotifyUrl || '');
+      renderHeroYoutubePlayer(data.youtubeUrl || '');
     }, function (err) {
       console.error('Erro ao carregar música do dia:', err);
       heroMusicStatus.textContent = '⚠ não foi possível carregar a música agora.';
@@ -2082,7 +2073,6 @@
 
     snapshot.forEach(function (doc) {
       var data = doc.data();
-      if (doc.id === MUSIC_CONFIG_DOC_ID || data.systemConfig) return;
       total++;
       var date = data.createdAt && data.createdAt.toDate
         ? data.createdAt.toDate()
@@ -2170,7 +2160,6 @@
       document.querySelectorAll('.cards-grid .card[data-id]').forEach(function (el) { el.remove(); });
       snapshot.forEach(function (doc) {
         var data = doc.data();
-        if (doc.id === MUSIC_CONFIG_DOC_ID || data.systemConfig) return;
         cardsGrid.appendChild(renderCard(doc.id, data));
       });
       atualizarEstatísticas(snapshot);
