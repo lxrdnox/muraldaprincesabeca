@@ -332,6 +332,7 @@
   .cards-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    align-items: start;
     gap: 12px;
     margin-bottom: 28px;
   }
@@ -347,6 +348,9 @@
     cursor: pointer;
     display: flex;
     flex-direction: column;
+    align-self: start;
+    width: 100%;
+    height: auto;
     position: relative;
   }
   .card:hover {
@@ -788,8 +792,13 @@
   .card-image-actions {
     margin-top: 10px;
   }
-  .card-image-add {
-    width: 100%;
+  .card-image-buttons {
+    display: flex;
+    gap: 7px;
+  }
+  .card-image-add,
+  .card-image-remove {
+    flex: 1;
     min-height: 36px;
     padding: 8px 12px;
     border: 1px dashed #e7a8c5;
@@ -803,8 +812,18 @@
     transition: background 0.15s, border-color 0.15s, transform 0.15s;
   }
   .card-image-add:hover { background: #ffeaf4; border-color: #f472b6; transform: translateY(-1px); }
-  .card-image-add:focus-visible { outline: 3px solid rgba(244,114,182,0.3); outline-offset: 2px; }
-  .card-image-add:disabled { opacity: 0.65; cursor: wait; transform: none; }
+  .card-image-remove {
+    border-style: solid;
+    border-color: #efb4bd;
+    background: #fff5f5;
+    color: #a6384a;
+  }
+  .card-image-remove:hover { background: #ffe5e8; border-color: #dc7182; transform: translateY(-1px); }
+  .card-image-remove[hidden] { display: none; }
+  .card-image-add:focus-visible,
+  .card-image-remove:focus-visible { outline: 3px solid rgba(244,114,182,0.3); outline-offset: 2px; }
+  .card-image-add:disabled,
+  .card-image-remove:disabled { opacity: 0.65; cursor: wait; transform: none; }
   .card-image-input { display: none; }
   .card-image-status {
     min-height: 15px;
@@ -1496,7 +1515,16 @@
 
   function renderMessageImages(card, data) {
     var gallery = card.querySelector('.card-images');
-    getMessageImages(data).forEach(function (image) { appendImageToGallery(gallery, image); });
+    var images = getMessageImages(data);
+    images.forEach(function (image) { appendImageToGallery(gallery, image); });
+    syncImageControls(card, images.length > 0);
+  }
+
+  function syncImageControls(card, hasImage) {
+    var addButton = card.querySelector('.card-image-add');
+    var removeButton = card.querySelector('.card-image-remove');
+    if (addButton && !addButton.disabled) addButton.textContent = hasImage ? '📷 trocar imagem' : '📷 adicionar imagem';
+    if (removeButton) removeButton.hidden = !hasImage;
   }
 
   function eachCardWithId(messageId, callback) {
@@ -1511,7 +1539,7 @@
       var status = card.querySelector('.card-image-status');
       if (button) {
         button.disabled = !!options.busy;
-        button.textContent = options.buttonText || '📷 adicionar imagem';
+        button.textContent = options.buttonText || (card.querySelector('.card-image-link') ? '📷 trocar imagem' : '📷 adicionar imagem');
       }
       if (status) status.textContent = options.statusText || '';
     });
@@ -1524,6 +1552,55 @@
         gallery.querySelectorAll('.card-image-link[data-image-source="inline"]').forEach(function (oldImage) { oldImage.remove(); });
       }
       appendImageToGallery(gallery, image);
+      syncImageControls(card, true);
+    });
+  }
+
+  function setImageRemovalState(messageId, busy, statusText) {
+    eachCardWithId(messageId, function (card) {
+      var addButton = card.querySelector('.card-image-add');
+      var removeButton = card.querySelector('.card-image-remove');
+      var status = card.querySelector('.card-image-status');
+      if (addButton) addButton.disabled = busy;
+      if (removeButton) {
+        removeButton.disabled = busy;
+        removeButton.textContent = busy ? 'removendo...' : '🗑 remover imagem';
+      }
+      if (status) status.textContent = statusText || '';
+    });
+  }
+
+  function clearMessageImages(messageId) {
+    eachCardWithId(messageId, function (card) {
+      var gallery = card.querySelector('.card-images');
+      if (gallery) gallery.innerHTML = '';
+      card.style.height = 'auto';
+      card.style.minHeight = '0';
+      syncImageControls(card, false);
+    });
+  }
+
+  function removeMessageImages(messageId) {
+    if (!window.confirm('Remover a imagem desta mensagem?')) return;
+    if (!db) {
+      setImageRemovalState(messageId, false, '⚠ o banco do mural ainda não está disponível.');
+      return;
+    }
+
+    setImageRemovalState(messageId, true, 'removendo imagem...');
+    db.collection('mensagens').doc(messageId).update({
+      imageData: firebase.firestore.FieldValue.delete(),
+      imageUrl: firebase.firestore.FieldValue.delete(),
+      images: firebase.firestore.FieldValue.delete()
+    }).then(function () {
+      clearMessageImages(messageId);
+      setImageRemovalState(messageId, false, '✔ imagem removida!');
+      setTimeout(function () { setImageRemovalState(messageId, false, ''); }, 2200);
+    }).catch(function (err) {
+      console.error('Erro ao remover imagem:', err);
+      setImageRemovalState(messageId, false, err && err.code === 'permission-denied'
+        ? '⚠ sem permissão para alterar esta mensagem.'
+        : '⚠ não foi possível remover a imagem. Tente novamente.');
     });
   }
 
@@ -1638,6 +1715,15 @@
     if (input) input.click();
   });
 
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest && event.target.closest('.card-image-remove');
+    if (!button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    var card = button.closest('.card');
+    if (card && card.dataset.id) removeMessageImages(card.dataset.id);
+  });
+
   document.addEventListener('change', function (event) {
     if (!event.target.classList || !event.target.classList.contains('card-image-input')) return;
     event.stopPropagation();
@@ -1679,7 +1765,10 @@
         '<div class="card-msg"></div>' +
         '<div class="card-images" aria-label="Imagens da mensagem"></div>' +
         '<div class="card-image-actions">' +
-          '<button type="button" class="card-image-add">📷 adicionar imagem</button>' +
+          '<div class="card-image-buttons">' +
+            '<button type="button" class="card-image-add">📷 adicionar imagem</button>' +
+            '<button type="button" class="card-image-remove" hidden>🗑 remover imagem</button>' +
+          '</div>' +
           '<input class="card-image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-label="Selecionar imagem para esta mensagem">' +
           '<p class="card-image-status" aria-live="polite"></p>' +
         '</div>' +
