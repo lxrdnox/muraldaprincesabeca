@@ -1,6 +1,7 @@
 
 
 
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap');
 
@@ -1092,6 +1093,7 @@
   .history-click-hint { display: flex; align-items: center; gap: 6px; color: #a82961; font: 800 12px/1.5 'Nunito', sans-serif; text-decoration: underline; text-underline-offset: 3px; }
   .history-click-gif { width: 32px; height: 32px; flex-shrink: 0; object-fit: contain; image-rendering: pixelated; }
 </style>
+<link rel="stylesheet" href="chat.css">
 
 <!-- TOP NAV -->
 <div class="topnav">
@@ -1305,6 +1307,7 @@
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
 <!-- SDK do EmailJS (envio de e-mail direto do navegador) -->
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
@@ -2360,3 +2363,31 @@
   })();
 })();
 </script>
+
+<button type="button" class="chat-launch" id="chatOpen" aria-haspopup="dialog" aria-controls="privateChat">💬 Nosso chat</button>
+<dialog class="private-chat" id="privateChat" aria-labelledby="privateChatTitle">
+  <div class="chat-shell">
+    <header class="chat-head">
+      <div><h2 id="privateChatTitle">Template de Chat</h2><p>Conversar.</p></div>
+      <button type="button" class="chat-close" id="chatClose" aria-label="Fechar chat">×</button>
+    </header>
+    <div class="chat-session" id="chatSession" hidden><span class="chat-account" id="chatAccount"></span><button type="button" class="chat-signout" id="chatSignOut">Sair</button></div>
+    <section class="chat-gate" id="chatGate">
+      <div class="chat-gate-icon" aria-hidden="true">🔐</div>
+      <h3>Tem carinho esperando aqui</h3>
+      <p>Entre com sua conta Google para conversar.<br>Este espaço é reservado para nós dois</p>
+      <button type="button" class="chat-primary" id="chatSignIn">Entrar com Google</button>
+    </section>
+    <section class="chat-room" id="chatRoom" aria-label="Conversa privada" hidden>
+      <ol class="chat-messages" id="chatMessages" aria-label="Mensagens da conversa"></ol>
+      <form class="chat-compose" id="chatForm">
+        <label for="chatText">Sua mensagem</label>
+        <textarea id="chatText" maxlength="2000" placeholder="Escreva um carinho…" required></textarea>
+        <div class="chat-compose-footer"><span class="chat-counter" id="chatCounter">0 / 2000</span><button type="submit" class="chat-primary" id="chatSend">Enviar 💌</button></div>
+      </form>
+    </section>
+    <p class="chat-status" id="chatStatus" role="status" aria-live="polite"></p>
+  </div>
+</dialog>
+
+<script src="chat.js"></script>
